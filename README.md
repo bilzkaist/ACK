@@ -1,4 +1,4 @@
-# Ace in the Hole, King on the Field: A Multi-Path Neural Network for Indoor Localization  
+# AIKF: Ace in the Hole, King on the Field for Indoor Localization using DNN and Multi-Sensor Fusion  
 
 
 Introduction:
