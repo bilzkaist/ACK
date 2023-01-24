@@ -27,7 +27,7 @@ floor_info_filename = floor_data_dir + '/floor_info.json'
 
 
 
-save_dir = '/output/site1/F1'
+save_dir = cwd + '/data/output/site1/F1'
 path_image_save_dir = save_dir + '/path_images'
 step_position_image_save_dir = save_dir
 magn_image_save_dir = save_dir
@@ -35,9 +35,9 @@ wifi_image_save_dir = save_dir + '/wifi_images'
 ibeacon_image_save_dir = save_dir + '/ibeacon_images'
 wifi_count_image_save_dir = save_dir
 
-class LocationModel(nn.Module):
+class AIKF(nn.Module):
     def init(self, input_size, hidden_size, output_size):
-        super(LocationModel, self).init()
+        super(AIKF, self).init()
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, hidden_size)
         self.fc3 = nn.Linear(hidden_size, output_size)
@@ -128,7 +128,7 @@ def calibrate_magnetic_wifi_ibeacon_to_position(path_file_list):
         input_size = train_inputs.shape[1]
         hidden_size = 100
         output_size = 2
-        location_model = LocationModel(input_size, hidden_size, output_size)
+        location_model = AIKF(input_size, hidden_size, output_size)
         criterion = nn.MSELoss()
         optimizer = optim.Adam(location_model.parameters(), lr=learning_rate)
         
@@ -164,7 +164,7 @@ def calibrate_magnetic_wifi_ibeacon_to_position(path_file_list):
 
 
 
-def test():
+def test2():
     with open(floor_info_filename) as json_file:
         floor_info = json.load(json_file)
     width_meter = floor_info["map_info"]["width"]
@@ -182,6 +182,7 @@ def test():
         fig = visualize_trajectory(path_data.waypoint[:, 1:3], floor_plan_filename, width_meter, height_meter, title=path_id, show=False)
         html_filename = f'{path_image_save_dir}/{path_id}.html'
         html_filename = str(Path(html_filename).resolve())
+        print("html_filename = ",html_filename)
         save_figure_to_html(fig, html_filename)
 
 
@@ -208,6 +209,81 @@ def test():
 
     print("Testing Done!")
 
+
+def test():
+    with open(floor_info_filename) as json_file:
+        floor_info = json.load(json_file)
+    width_meter = floor_info["map_info"]["width"]
+    height_meter = floor_info["map_info"]["height"]
+    test_path_filename = None 
+    test_path_filenames = list(Path(path_data_dir).resolve().glob("*.txt"))
+
+    # 1. visualize ground truth positions
+    print('Visualizing ground truth positions...')
+    for test_path_filename in test_path_filenames:
+        print(f'Processing file: {test_path_filename}...')
+
+        path_data = read_data_file(test_path_filename)
+        #print(path_data)
+        path_id = test_path_filename.name.split(".")[0]
+        fig = visualize_trajectory(path_data.waypoint[:, 1:3], floor_plan_filename, width_meter, height_meter, title=path_id, show=False)
+        html_filename = f'{path_image_save_dir}/{path_id}.html'
+        html_filename = str(Path(html_filename).resolve())
+        print("html_filename = ",html_filename)
+        save_figure_to_html(fig, html_filename)
+        
+    test_path_datas = read_data_file(test_path_filename)
+    test_magn_datas = test_path_datas.magn
+    test_wifi_datas = test_path_datas.wifi
+    test_ibeacon_datas = test_path_datas.ibeacon
+
+    
+    test_magn_counts = split_ts_seq(test_magn_datas, 10)
+    test_wifi_counts = split_ts_seq(test_wifi_datas, 10)
+    test_ibeacon_counts = split_ts_seq(test_ibeacon_datas, 10) 
+    
+    
+    test_magn_counts = np.array(test_magn_counts)
+    test_wifi_counts = np.array(test_wifi_counts)
+    test_ibeacon_counts = np.array(test_ibeacon_counts)
+
+    test_inputs = np.hstack((test_magn_counts[:, 1], test_magn_counts[:, 2], test_magn_counts[:, 3], test_wifi_counts[:, 1], test_wifi_counts[:, 2], test_ibeacon_counts[:, 1]))
+
+    test_inputs = []
+    test_inputs.extend(test_magn_counts[:, 1])
+    test_inputs.extend(test_magn_counts[:, 2])
+    test_inputs.extend(test_magn_counts[:, 3])
+    test_inputs.extend(test_wifi_counts[:, 1])
+    test_inputs.extend(test_wifi_counts[:, 2])
+    test_inputs.extend(test_ibeacon_counts[:, 1])
+
+    test_inputs = np.array(test_inputs)
+
+
+
+    """ 
+    try:
+        test_inputs = np.hstack((test_magn_counts[:, 1:4], test_wifi_counts[:, 1:], test_ibeacon_counts[:, 1:]))
+    except:
+        test_inputs = np.hstack((test_magn_counts[:, 1], test_magn_counts[:, 2], test_magn_counts[:, 3], test_wifi_counts[:, 1], test_wifi_counts[:, 2], test_ibeacon_counts[:, 1]))
+    """
+    #test_inputs = np.hstack((test_magn_counts[:, 1], test_magn_counts[:, 2], test_magn_counts[:, 3], test_wifi_counts[:, 1], test_wifi_counts[:, 2], test_ibeacon_counts[:, 1]))
+
+
+    test_inputs = torch.from_numpy(test_inputs).float()
+    test_inputs = test_inputs.to(device)
+
+    test_outputs = location_model(test_inputs)
+
+    test_outputs = test_outputs.data.cpu().numpy()
+
+    fig = visualize_trajectory(test_outputs, floor_plan_filename, width_meter, height_meter, title='Predicted', show=True)
+    save_figure_to_html(fig, f'{path_image_save_dir}/predicted.html')
+
+    print("Testing Done!")
+
+
+
 if __name__ == '__main__':
     try:
         path_file_list = [f for f in os.listdir(path_data_dir) if f.endswith('.json')]
@@ -230,5 +306,5 @@ if __name__ == '__main__':
     input_size = train_inputs.shape[1]
     hidden_size = 100
     output_size = 2
-    model = LocationModel
+    model = AIKF
         
