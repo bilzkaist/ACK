@@ -25,7 +25,7 @@ path_data_dir = floor_data_dir + '/path_data_files'
 floor_plan_filename = floor_data_dir + '/floor_image.png'
 floor_info_filename = floor_data_dir + '/floor_info.json'
 
-
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 save_dir = cwd + '/data/output/site1/F1'
 path_image_save_dir = save_dir + '/path_images'
@@ -70,6 +70,7 @@ class AIKF(nn.Module):
 
 
 def calibrate_magnetic_wifi_ibeacon_to_position(path_file_list):
+    print("Training ...")
     location_model = None
     mwi_datas = {}
     for path_filename in path_file_list:
@@ -164,53 +165,8 @@ def calibrate_magnetic_wifi_ibeacon_to_position(path_file_list):
 
 
 
+
 def test2():
-    with open(floor_info_filename) as json_file:
-        floor_info = json.load(json_file)
-    width_meter = floor_info["map_info"]["width"]
-    height_meter = floor_info["map_info"]["height"]
-    test_path_filename = None #'./data/site1/F1/path_data_files/path_1.json'
-    test_path_filenames = list(Path(path_data_dir).resolve().glob("*.txt"))
-
-    # 1. visualize ground truth positions
-    print('Visualizing ground truth positions...')
-    for test_path_filename in test_path_filenames:
-        print(f'Processing file: {test_path_filename}...')
-
-        path_data = read_data_file(test_path_filename)
-        path_id = test_path_filename.name.split(".")[0]
-        fig = visualize_trajectory(path_data.waypoint[:, 1:3], floor_plan_filename, width_meter, height_meter, title=path_id, show=False)
-        html_filename = f'{path_image_save_dir}/{path_id}.html'
-        html_filename = str(Path(html_filename).resolve())
-        print("html_filename = ",html_filename)
-        save_figure_to_html(fig, html_filename)
-
-
-    test_path_datas = read_data_file(test_path_filename)
-    test_magn_datas = test_path_datas.magn
-    test_wifi_datas = test_path_datas.wifi
-    test_ibeacon_datas = test_path_datas.ibeacon
-
-    test_magn_counts = split_ts_seq(test_magn_datas, 10)
-    test_wifi_counts = split_ts_seq(test_wifi_datas, 10)
-    test_ibeacon_counts = split_ts_seq(test_ibeacon_datas, 10)
-
-    test_inputs = np.hstack((test_magn_counts[:, 1:4], test_wifi_counts[:, 1:], test_ibeacon_counts[:, 1:]))
-
-    test_inputs = torch.from_numpy(test_inputs).float()
-    test_inputs = test_inputs.to(device)
-
-    test_outputs = location_model(test_inputs)
-
-    test_outputs = test_outputs.data.cpu().numpy()
-
-    visualize_trajectory(test_outputs, floor_plan_filename, width_meter, height_meter, title='Predicted', show=True)
-    save_figure_to_html(test_outputs, floor_plan_filename, width_meter, height_meter, title='Predicted', save_dir=path_image_save_dir, show=True)
-
-    print("Testing Done!")
-
-
-def test():
     with open(floor_info_filename) as json_file:
         floor_info = json.load(json_file)
     width_meter = floor_info["map_info"]["width"]
@@ -225,12 +181,124 @@ def test():
 
         path_data = read_data_file(test_path_filename)
         #print(path_data)
+
+    print("Printed All !!!")
+    test_path_datas = read_data_file(test_path_filename)
+    print("test_path_datas = ", test_path_datas)
+    test_magn_datas = test_path_datas.magn
+    test_wifi_datas = test_path_datas.wifi
+    test_ibeacon_datas = test_path_datas.ibeacon
+    print("")
+
+def get_train_data():
+    path_data_files = list(Path(path_data_dir).resolve().glob("*.txt"))
+    step_positions = compute_step_positions(path_data_files)
+    train_magn_datas = []
+    train_wifi_datas = []
+    train_ibeacon_datas = []
+    train_target = []
+
+    for path_data_file in path_data_files:
+        path_datas = read_data_file(path_data_file)
+        train_magn_datas.extend(path_datas.magn)
+        train_wifi_datas.extend(path_datas.wifi)
+        train_ibeacon_datas.extend(path_datas.ibeacon)
+        train_target.extend(step_positions[path_data_file.name])
+
+    train_magn_counts = split_ts_seq(train_magn_datas, 10)
+    train_wifi_counts = split_ts_seq(train_wifi_datas, 10)
+    train_ibeacon_counts = split_ts_seq(train_ibeacon_datas, 10)
+
+    input_data = np.hstack((train_magn_counts[:, 1], train_magn_counts[:, 2], train_magn_counts[:, 3], train_wifi_counts[:, 1], train_wifi_counts[:, 2], train_ibeacon_counts[:, 1]))
+    input_data = torch.from_numpy(input_data).float()
+    target_data = torch.from_numpy(np.array(train_target)).float()
+
+    return input_data, target_data
+
+
+
+
+def get_train_data2():
+    train_path_filenames = list(Path(path_data_dir).resolve().glob("*.txt"))
+    train_inputs = []
+    train_targets = []
+    for train_path_filename in train_path_filenames:
+        print(f'Processing file: {train_path_filename}...')
+        path_data = read_data_file(train_path_filename)
+        waypoints = path_data.waypoint[:, 1:3]
+        magn_data = path_data.magn
+        wifi_data = path_data.wifi
+        ibeacon_data = path_data.ibeacon
+        
+        # split and count the sensor data
+        magn_counts = split_ts_seq(magn_data, 10)
+        wifi_counts = split_ts_seq(wifi_data, 10)
+        ibeacon_counts = split_ts_seq(ibeacon_data, 10)
+        
+        # concatenate the sensor data
+        input_data = np.hstack((magn_counts[:, 1], magn_counts[:, 2], magn_counts[:, 3], wifi_counts[:, 1], wifi_counts[:, 2], ibeacon_counts[:, 1]))
+        
+        train_inputs.append(input_data)
+        train_targets.append(waypoints)
+        
+    train_inputs = np.concatenate(train_inputs, axis=0)
+    train_targets = np.concatenate(train_targets, axis=0)
+    train_input = torch.from_numpy(train_inputs).float()
+    train_target = torch.from_numpy(train_targets).float()
+    return train_input, train_target
+
+
+def train(path_file_list, num_epochs, learning_rate):
+    location_model = AIKF(input_size=18, hidden_size=64, output_size=2)
+    mwi_datas = {}
+    for path_filename in path_file_list:
+        print(f'Processing {path_filename}...')
+        path_datas = read_data_file(path_filename)
+        acce_datas = path_datas.acce
+        magn_datas = path_datas.magn
+        wifi_datas = path_datas.wifi
+        ibeacon_datas = path_datas.ibeacon
+        waypoint = path_datas.waypoint
+        
+        # Prepare data for training
+        mwi_counts = split_ts_seq(magn_datas, wifi_datas, ibeacon_datas, 10)
+        step_positions = compute_step_positions(acce_datas, 10)
+        train_inputs = np.hstack((mwi_counts, step_positions))
+        train_targets = waypoint[:, 1:3]
+        
+        # Convert data to PyTorch tensors
+        train_inputs = torch.from_numpy(train_inputs).float()
+        train_targets = torch.from_numpy(train_targets).float()
+        
+        # Train the model
+        location_model.train_model(train_inputs, train_targets, device, num_epochs, learning_rate)
+    
+    return location_model
+
+
+
+def test():
+    with open(floor_info_filename) as json_file:
+        floor_info = json.load(json_file)
+    width_meter = floor_info["map_info"]["width"]
+    height_meter = floor_info["map_info"]["height"]
+    test_path_filename = None 
+    test_path_filenames = list(Path(path_data_dir).resolve().glob("*.txt"))
+
+    # 1. visualize ground truth positions
+    print('Visualizing ground truth positions...')
+    for test_path_filename in test_path_filenames:
+        #print(f'Processing file: {test_path_filename}...')
+
+        path_data = read_data_file(test_path_filename)
+        #print(path_data)
         path_id = test_path_filename.name.split(".")[0]
         fig = visualize_trajectory(path_data.waypoint[:, 1:3], floor_plan_filename, width_meter, height_meter, title=path_id, show=False)
-        html_filename = f'{path_image_save_dir}/{path_id}.html'
-        html_filename = str(Path(html_filename).resolve())
-        print("html_filename = ",html_filename)
-        save_figure_to_html(fig, html_filename)
+
+        #html_filename = f'{path_image_save_dir}/{path_id}.html'
+        #html_filename = str(Path(html_filename).resolve())
+        #print("html_filename = ",html_filename)
+        #save_figure_to_html(fig, html_filename)
         
     test_path_datas = read_data_file(test_path_filename)
     test_magn_datas = test_path_datas.magn
@@ -257,7 +325,10 @@ def test():
     test_inputs.extend(test_wifi_counts[:, 2])
     test_inputs.extend(test_ibeacon_counts[:, 1])
 
-    test_inputs = np.array(test_inputs)
+    #test_inputs_float = np.array(test_inputs)
+    #test_inputs_float = np.asarray(test_inputs, dtype='float')
+    test_inputs_flat = [float(item) for sublist in test_inputs for item in sublist if isinstance(item, (float, int))]
+    test_inputs_float = np.asarray(test_inputs_flat, dtype='float')
 
 
 
@@ -270,10 +341,11 @@ def test():
     #test_inputs = np.hstack((test_magn_counts[:, 1], test_magn_counts[:, 2], test_magn_counts[:, 3], test_wifi_counts[:, 1], test_wifi_counts[:, 2], test_ibeacon_counts[:, 1]))
 
 
-    test_inputs = torch.from_numpy(test_inputs).float()
+    #test_inputs = torch.from_numpy(test_inputs_float).float()
+    test_inputs = torch.from_numpy(test_inputs_float).float()
     test_inputs = test_inputs.to(device)
 
-    test_outputs = location_model(test_inputs)
+    test_outputs = AIKF(test_inputs)
 
     test_outputs = test_outputs.data.cpu().numpy()
 
@@ -282,9 +354,14 @@ def test():
 
     print("Testing Done!")
 
+def run():
+    location_model = AIKF()
+    train_input, train_target = get_train_data()
+    location_model.train_model(train_input, train_target, device, num_epochs=50, learning_rate=0.001)
+    test()
 
 
-if __name__ == '__main__':
+def run2():
     try:
         path_file_list = [f for f in os.listdir(path_data_dir) if f.endswith('.json')]
     except:
@@ -296,15 +373,14 @@ if __name__ == '__main__':
     
     
     calibrate_magnetic_wifi_ibeacon_to_position(path_file_list)#, learning_rate, num_epochs, )
-    print("Done!")
+    print("Training Done!")
     test()
     print("Testing Done!")
-    print("Testing Done!")
-    train_inputs = np.hstack((magn_datas[:, 1:4], wifi_counts[:, 1:], ibeacon_counts[:, 1:]))
-    train_targets = step_positions[:, 1:3]
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    input_size = train_inputs.shape[1]
-    hidden_size = 100
-    output_size = 2
-    model = AIKF
+
+
+if __name__ == '__main__':
+    print("Program  Started !!!")
+    run()
+    print("Program Finished Successfully !!!")
+
         
