@@ -192,32 +192,10 @@ def test2():
 
 
 
-def get_train_data(path_file_list):
-    print("Training ...")
-    location_model = None
-    mwi_datas = {}
-    for path_filename in path_file_list:
-        print(f'Processing {path_filename}...')
-        path_datas = read_data_file(path_filename)
-        acce_datas = path_datas.acce
-        magn_datas = path_datas.magn
-        ahrs_datas = path_datas.ahrs
-        wifi_datas = path_datas.wifi
-        ibeacon_datas = path_datas.ibeacon
-        posi_datas = path_datas.waypoint
+def get_train_data(ahrs_datas, posi_datas):
     path_data_files = list(Path(path_data_dir).resolve().glob("*.txt"))
     
-    #step_positions = compute_step_positions(path_data_files, ahrs_datas, posi_datas)
-    step_positions = compute_step_positions(acce_datas, ahrs_datas, posi_datas)
-    
-    # create a dictionary of magnetic, wifi, ibeacon data and step positions
-    mwi_datas[path_filename] = {
-        'magn': magn_datas,
-        'wifi': wifi_datas,
-        'ibeacon': ibeacon_datas,
-        'step': step_positions
-    }
-
+    step_positions = compute_step_positions(path_data_files, ahrs_datas, posi_datas)
     train_magn_datas = []
     train_wifi_datas = []
     train_ibeacon_datas = []

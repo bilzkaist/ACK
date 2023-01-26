@@ -66,14 +66,14 @@ def train_model(self, train_input, train_target, device, num_epochs, learning_ra
 def calibrate_magnetic_wifi_ibeacon_to_position(path_file_list):
     mwi_datas = {}
     for path_filename in path_file_list:
-    print(f'Processing {path_filename}...')
-    path_datas = read_data_file(path_filename)
-    acce_datas = path_datas.acce
-    magn_datas = path_datas.magn
-    ahrs_datas = path_datas.ahrs
-    wifi_datas = path_datas.wifi
-    ibeacon_datas = path_datas.ibeacon
-    posi_datas = path_datas.waypoint
+        print(f'Processing {path_filename}...')
+        path_datas = read_data_file(path_filename)
+        acce_datas = path_datas.acce
+        magn_datas = path_datas.magn
+        ahrs_datas = path_datas.ahrs
+        wifi_datas = path_datas.wifi
+        ibeacon_datas = path_datas.ibeacon
+        posi_datas = path_datas.waypoint
 
     step_positions = compute_step_positions(acce_datas, ahrs_datas, posi_datas)
     # visualize_trajectory(posi_datas[:, 1:3], floor_plan_filename, width_meter, height_meter, title='Ground Truth', show=True)

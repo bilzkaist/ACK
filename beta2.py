@@ -326,3 +326,62 @@ if __name__ == '__main__':
     print("Program Ended !!!")
 
         
+def get_train_data2():
+    path_data_files = list(Path(path_data_dir).resolve().glob("*.txt"))
+    ahrs_datas = read_ahrs_data(ahrs_data_file)
+    posi_datas = read_posi_data(posi_data_file)
+    step_positions = compute_step_positions(path_data_files, ahrs_datas, posi_datas)
+
+    train_magn_datas = []
+    train_wifi_datas = []
+    train_ibeacon_datas = []
+    train_target = []
+
+    for path_data_file in path_data_files:
+        path_datas = read_data_file(path_data_file)
+        train_magn_datas.extend(path_datas.magn)
+        train_wifi_datas.extend(path_datas.wifi)
+        train_ibeacon_datas.extend(path_datas.ibeacon)
+        train_target.extend(step_positions[path_data_file.name])
+
+    train_magn_counts = split_ts_seq(train_magn_datas, 10)
+    train_wifi_counts = split_ts_seq(train_wifi_datas, 10)
+    train_ibeacon_counts = split_ts_seq(train_ibeacon_datas, 10)
+
+    input_data = np.hstack((train_magn_counts[:, 1], train_magn_counts[:, 2], train_magn_counts[:, 3], train_wifi_counts[:, 1], train_wifi_counts[:, 2], train_ibeacon_counts[:, 1]))
+    input_data = torch.from_numpy(input_data).float()
+    target_data = torch.from_numpy(np.array(train_target)).float()
+
+    return input_data, target_data
+
+
+
+
+def get_train_data2():
+    train_path_filenames = list(Path(path_data_dir).resolve().glob("*.txt"))
+    train_inputs = []
+    train_targets = []
+    for train_path_filename in train_path_filenames:
+        print(f'Processing file: {train_path_filename}...')
+        path_data = read_data_file(train_path_filename)
+        waypoints = path_data.waypoint[:, 1:3]
+        magn_data = path_data.magn
+        wifi_data = path_data.wifi
+        ibeacon_data = path_data.ibeacon
+        
+        # split and count the sensor data
+        magn_counts = split_ts_seq(magn_data, 10)
+        wifi_counts = split_ts_seq(wifi_data, 10)
+        ibeacon_counts = split_ts_seq(ibeacon_data, 10)
+        
+        # concatenate the sensor data
+        input_data = np.hstack((magn_counts[:, 1], magn_counts[:, 2], magn_counts[:, 3], wifi_counts[:, 1], wifi_counts[:, 2], ibeacon_counts[:, 1]))
+        
+        train_inputs.append(input_data)
+        train_targets.append(waypoints)
+        
+    train_inputs = np.concatenate(train_inputs, axis=0)
+    train_targets = np.concatenate(train_targets, axis=0)
+    train_input = torch.from_numpy(train_inputs).float()
+    train_target = torch.from_numpy(train_targets).float()
+    return train_input, train_target
